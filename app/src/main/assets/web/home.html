@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NNDD-RE TV</title>
+<style>
+  :root {
+    --bg: #121212;
+    --surface: #1e1e1e;
+    --border: #333;
+    --accent: #ff8a3d;
+    --text: #eee;
+    --subtext: #999;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 24px;
+    text-align: center;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px;
+    width: 100%;
+    max-width: 480px;
+    margin-top: 16px;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 12px; color: var(--accent); }
+  p { color: var(--subtext); line-height: 1.6; }
+  .loginStatus { font-size: 0.85rem; margin-bottom: 16px; }
+
+  .playerCard { text-align: center; }
+  .title { font-size: 1.05rem; margin-bottom: 20px; line-height: 1.4; color: var(--text); }
+  .seekRow { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+  .time { font-size: 0.8rem; color: var(--subtext); min-width: 42px; }
+  input[type="range"] { flex: 1; accent-color: var(--accent); }
+  .controls { display: flex; justify-content: center; gap: 12px; }
+  .controls button {
+    padding: 12px 18px; border-radius: 8px; border: none; background: var(--accent);
+    color: #121212; font-weight: bold; font-size: 1rem; cursor: pointer;
+  }
+  .controls button.secondary { background: #2a2a2a; color: var(--text); }
+  .qualityRow { margin-top: 20px; }
+  select {
+    width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
+    background: #2a2a2a; color: var(--text); font-size: 0.9rem;
+  }
+  .status { color: var(--subtext); margin-top: 16px; font-size: 0.85rem; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>TVとペアリングしました</h1>
+    <p class="loginStatus" id="loginStatus"></p>
+    <p id="loginLink"><a href="/login.html" style="color: var(--accent);">ニコニコアカウントでログイン</a></p>
+    <p><a href="/ranking.html" style="color: var(--accent);">ランキング</a></p>
+    <p><a href="/search.html" style="color: var(--accent);">検索</a></p>
+    <p><a href="/mylist.html" style="color: var(--accent);">マイリスト</a></p>
+    <p id="libraryLink" style="display: none;"><a href="/library.html" style="color: var(--accent);">NNDD-REライブラリ</a></p>
+    <p><a href="/settings.html" style="color: var(--accent);">設定</a></p>
+  </div>
+
+  <div class="card playerCard" id="playerCard" style="display: none;">
+    <div class="title" id="title"></div>
+    <div class="seekRow">
+      <span class="time" id="posLabel">00:00</span>
+      <input type="range" id="seekBar" min="0" max="0" value="0">
+      <span class="time" id="durLabel">00:00</span>
+    </div>
+    <div class="controls">
+      <button class="secondary" id="back10">-10秒</button>
+      <button id="toggleBtn">一時停止</button>
+      <button class="secondary" id="fwd10">+10秒</button>
+    </div>
+    <div class="qualityRow">
+      <select id="qualitySelect" disabled>
+        <option>画質: 再生中の動画がありません</option>
+      </select>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+
+<script>
+async function loadLoginStatus() {
+  try {
+    const res = await fetch('/api/auth/status', { credentials: 'same-origin' });
+    const status = await res.json();
+    const statusEl = document.getElementById('loginStatus');
+    if (status.loggedIn) {
+      statusEl.textContent = (status.nickname || '(取得中)') + 'でログイン中';
+      document.getElementById('loginLink').style.display = 'none';
+    } else {
+      statusEl.textContent = '未ログイン';
+    }
+  } catch (e) {
+    // 状態取得に失敗してもリンク自体は表示したままにする
+  }
+}
+loadLoginStatus();
+
+async function loadLibraryLinkVisibility() {
+  try {
+    const res = await fetch('/api/library-connection', { credentials: 'same-origin' });
+    const data = await res.json();
+    if (data.host) {
+      document.getElementById('libraryLink').style.display = '';
+    }
+  } catch (e) {
+    // 未接続時はリンクを表示しないままにする
+  }
+}
+loadLibraryLinkVisibility();
+
+// 再生中の動画があれば、遷移せずこのページ内で一時停止・シーク・画質操作ができるようにする
+let seeking = false;
+let changingQuality = false;
+let lastQualitiesKey = '';
+let lastState = null;
+
+function formatTime(ms) {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function pollPlaybackState() {
+  try {
+    const res = await fetch('/api/playback/state', { credentials: 'same-origin' });
+    const state = await res.json();
+    lastState = state;
+    const playerCard = document.getElementById('playerCard');
+    if (!state.videoId) {
+      playerCard.style.display = 'none';
+      return;
+    }
+    playerCard.style.display = '';
+    document.getElementById('status').textContent = '';
+    const qualitySelect = document.getElementById('qualitySelect');
+    document.getElementById('toggleBtn').disabled = false;
+    document.getElementById('title').textContent = escapeHtml(state.title);
+    document.getElementById('toggleBtn').textContent = state.isPlaying ? '一時停止' : '再生';
+    document.getElementById('durLabel').textContent = formatTime(state.durationMs);
+    const seekBar = document.getElementById('seekBar');
+    seekBar.max = state.durationMs || 0;
+    if (!seeking) {
+      seekBar.value = state.positionMs;
+      document.getElementById('posLabel').textContent = formatTime(state.positionMs);
+    }
+    if (state.qualities && state.qualities.length > 0) {
+      const key = JSON.stringify(state.qualities);
+      if (key !== lastQualitiesKey) {
+        lastQualitiesKey = key;
+        qualitySelect.innerHTML = state.qualities.map(q =>
+          `<option value="${q.id}">画質: ${escapeHtml(q.label)}</option>`
+        ).join('');
+      }
+      if (!changingQuality) {
+        qualitySelect.value = state.currentQualityId;
+      }
+      qualitySelect.disabled = false;
+    } else {
+      qualitySelect.disabled = true;
+    }
+  } catch (e) {
+    document.getElementById('status').textContent = '状態の取得に失敗しました';
+  }
+}
+
+async function sendCommand(path, body) {
+  await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: body ? JSON.stringify(body) : undefined
+  });
+}
+
+document.getElementById('toggleBtn').addEventListener('click', () => {
+  if (!lastState) return;
+  sendCommand(lastState.isPlaying ? '/api/playback/pause' : '/api/playback/resume');
+});
+
+document.getElementById('back10').addEventListener('click', () => {
+  if (!lastState) return;
+  sendCommand('/api/playback/seek', { positionMs: Math.max(0, lastState.positionMs - 10000) });
+});
+
+document.getElementById('fwd10').addEventListener('click', () => {
+  if (!lastState) return;
+  sendCommand('/api/playback/seek', { positionMs: lastState.positionMs + 10000 });
+});
+
+const seekBar = document.getElementById('seekBar');
+seekBar.addEventListener('input', () => {
+  seeking = true;
+  document.getElementById('posLabel').textContent = formatTime(Number(seekBar.value));
+});
+seekBar.addEventListener('change', () => {
+  sendCommand('/api/playback/seek', { positionMs: Number(seekBar.value) });
+  seeking = false;
+});
+
+document.getElementById('qualitySelect').addEventListener('change', (e) => {
+  changingQuality = true;
+  sendCommand('/api/playback/quality', { qualityId: e.target.value }).finally(() => {
+    setTimeout(() => { changingQuality = false; }, 1500);
+  });
+});
+
+pollPlaybackState();
+setInterval(pollPlaybackState, 1000);
+</script>
+<script src="/nav-watcher.js"></script>
+</body>
+</html>

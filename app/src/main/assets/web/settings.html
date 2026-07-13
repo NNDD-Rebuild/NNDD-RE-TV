@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>設定 - NNDD-RE TV</title>
+<style>
+  :root {
+    --bg: #121212; --surface: #1e1e1e; --border: #333;
+    --accent: #ff8a3d; --text: #eee; --subtext: #999;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+    display: flex; flex-direction: column; align-items: center; padding: 24px;
+  }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 32px; width: 100%; max-width: 400px; text-align: center;
+  }
+  h1 { font-size: 1.2rem; color: var(--accent); margin: 0 0 20px; }
+  button {
+    width: 100%; margin-top: 12px; padding: 12px; border-radius: 8px; border: none;
+    background: var(--accent); color: #121212; font-size: 1rem; font-weight: bold; cursor: pointer;
+  }
+  .status { color: var(--subtext); margin-top: 16px; font-size: 0.85rem; }
+  a.back { color: var(--subtext); text-decoration: none; font-size: 0.85rem; align-self: flex-start; }
+  .field { text-align: left; margin-top: 12px; }
+  .field label { display: block; font-size: 0.8rem; color: var(--subtext); margin-bottom: 4px; }
+  .field input {
+    width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
+    background: #2a2a2a; color: var(--text); font-size: 1rem;
+  }
+  .btnRow { display: flex; gap: 8px; margin-top: 12px; }
+  .btnRow button { margin-top: 0; }
+  .btnRow button.secondary { background: #2a2a2a; color: var(--text); }
+</style>
+</head>
+<body>
+  <a class="back" href="/home.html">&larr; ホームに戻る</a>
+  <div class="card">
+    <h1>設定</h1>
+    <button id="logoutBtn">ログアウト</button>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="card">
+    <h1>NNDD-REライブラリ共有サーバー</h1>
+    <div class="field">
+      <label for="libHost">PCのIPアドレス</label>
+      <input type="text" id="libHost" placeholder="例: 192.168.1.10">
+    </div>
+    <div class="field">
+      <label for="libPort">ポート</label>
+      <input type="number" id="libPort" placeholder="12345" value="12345">
+    </div>
+    <div class="btnRow">
+      <button class="secondary" id="libTestBtn">接続テスト</button>
+      <button id="libSaveBtn">保存</button>
+    </div>
+    <div class="status" id="libStatus"></div>
+  </div>
+
+<script>
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+  const statusEl = document.getElementById('status');
+  statusEl.textContent = '処理中…';
+  try {
+    const res = await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+    const data = await res.json();
+    statusEl.textContent = data.status === 'ok' ? 'ログアウトしました' : '失敗しました';
+  } catch (e) {
+    statusEl.textContent = '通信に失敗しました';
+  }
+});
+
+async function loadLibraryConnection() {
+  try {
+    const res = await fetch('/api/library-connection', { credentials: 'same-origin' });
+    const data = await res.json();
+    if (data.host) document.getElementById('libHost').value = data.host;
+    if (data.port) document.getElementById('libPort').value = data.port;
+  } catch (e) {
+    // 未設定/取得失敗時は既定値のまま
+  }
+}
+
+function currentLibraryInput() {
+  return {
+    host: document.getElementById('libHost').value.trim(),
+    port: Number(document.getElementById('libPort').value) || 12345
+  };
+}
+
+document.getElementById('libTestBtn').addEventListener('click', async () => {
+  const libStatusEl = document.getElementById('libStatus');
+  const { host, port } = currentLibraryInput();
+  if (!host) { libStatusEl.textContent = 'IPアドレスを入力してください'; return; }
+  libStatusEl.textContent = '接続テスト中…';
+  try {
+    const res = await fetch('/api/library-connection/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ host, port })
+    });
+    const data = await res.json();
+    libStatusEl.textContent = data.ok ? '接続できました' : '接続できませんでした';
+  } catch (e) {
+    libStatusEl.textContent = '通信に失敗しました';
+  }
+});
+
+document.getElementById('libSaveBtn').addEventListener('click', async () => {
+  const libStatusEl = document.getElementById('libStatus');
+  const { host, port } = currentLibraryInput();
+  if (!host) { libStatusEl.textContent = 'IPアドレスを入力してください'; return; }
+  libStatusEl.textContent = '保存中…';
+  try {
+    await fetch('/api/library-connection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ host, port })
+    });
+    libStatusEl.textContent = '保存しました';
+  } catch (e) {
+    libStatusEl.textContent = '保存に失敗しました';
+  }
+});
+
+loadLibraryConnection();
+</script>
+<script src="/nav-watcher.js"></script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>検索 - NNDD-RE TV</title>
+<style>
+  :root {
+    --bg: #121212; --surface: #1e1e1e; --border: #333;
+    --accent: #ff8a3d; --text: #eee; --subtext: #999;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif; padding: 24px; }
+  h1 { font-size: 1.2rem; color: var(--accent); }
+  .searchBar { display: flex; gap: 8px; margin-bottom: 20px; }
+  input { flex: 1; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: #2a2a2a; color: var(--text); font-size: 1rem; }
+  button { padding: 10px 20px; border-radius: 8px; border: none; background: var(--accent); color: #121212; font-weight: bold; cursor: pointer; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
+  .thumb { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; background: #2a2a2a; margin-bottom: 8px; }
+  .title { font-size: 0.85rem; line-height: 1.4; margin-bottom: 8px; height: 3.9em; overflow: hidden; }
+  .playBtn { width: 100%; padding: 8px; border-radius: 6px; border: none; background: var(--accent); color: #121212; font-size: 0.85rem; cursor: pointer; }
+  .status { color: var(--subtext); margin: 12px 0; }
+  a.back { color: var(--subtext); text-decoration: none; font-size: 0.85rem; }
+</style>
+</head>
+<body>
+  <a class="back" href="/home.html">&larr; ホームに戻る</a>
+  <h1>検索</h1>
+  <div class="searchBar">
+    <input type="text" id="q" placeholder="キーワードを入力">
+    <button id="searchBtn">検索</button>
+  </div>
+  <div class="status" id="status"></div>
+  <div class="grid" id="grid"></div>
+
+<script>
+async function doSearch() {
+  const q = document.getElementById('q').value.trim();
+  if (!q) return;
+  const statusEl = document.getElementById('status');
+  const gridEl = document.getElementById('grid');
+  statusEl.textContent = '検索中…';
+  gridEl.innerHTML = '';
+  try {
+    const res = await fetch('/api/search?q=' + encodeURIComponent(q), { credentials: 'same-origin' });
+    const items = await res.json();
+    statusEl.textContent = items.length + '件見つかりました(TV側にも反映されます)';
+    gridEl.innerHTML = items.map(item => `
+      <div class="card">
+        <img class="thumb" src="${item.thumbnailUrl}" alt="" loading="lazy">
+        <div class="title">${escapeHtml(item.title)}</div>
+        <button class="playBtn" onclick="playOnTv('${item.videoId}')">TVで再生</button>
+      </div>
+    `).join('');
+  } catch (e) {
+    statusEl.textContent = '検索に失敗しました';
+  }
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function playOnTv(videoId) {
+  await fetch('/api/playback/play', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({ videoId })
+  });
+  location.href = '/home.html';
+}
+
+document.getElementById('searchBtn').addEventListener('click', doSearch);
+document.getElementById('q').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+</script>
+<script src="/nav-watcher.js"></script>
+</body>
+</html>

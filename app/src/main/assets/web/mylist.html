@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>マイリスト - NNDD-RE TV</title>
+<style>
+  :root {
+    --bg: #121212; --surface: #1e1e1e; --border: #333;
+    --accent: #ff8a3d; --text: #eee; --subtext: #999;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif; padding: 24px; }
+  h1 { font-size: 1.2rem; color: var(--accent); }
+  .list { display: flex; flex-direction: column; gap: 8px; }
+  .listItem { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; cursor: pointer; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
+  .thumb { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; background: #2a2a2a; margin-bottom: 8px; }
+  .title { font-size: 0.85rem; line-height: 1.4; margin-bottom: 8px; height: 3.9em; overflow: hidden; }
+  .playBtn { width: 100%; padding: 8px; border-radius: 6px; border: none; background: var(--accent); color: #121212; font-size: 0.85rem; cursor: pointer; }
+  .status { color: var(--subtext); margin: 12px 0; }
+  a.back { color: var(--subtext); text-decoration: none; font-size: 0.85rem; }
+</style>
+</head>
+<body>
+  <a class="back" href="/home.html">&larr; ホームに戻る</a>
+  <h1 id="pageTitle">マイリスト</h1>
+  <div class="status" id="status">読み込み中…</div>
+  <div class="list" id="list"></div>
+  <div class="grid" id="grid"></div>
+
+<script>
+async function loadMylists() {
+  const statusEl = document.getElementById('status');
+  const listEl = document.getElementById('list');
+  try {
+    const res = await fetch('/api/mylist', { credentials: 'same-origin' });
+    const mylists = await res.json();
+    if (mylists.length === 0) {
+      statusEl.textContent = 'マイリストがありません(ログインが必要な場合があります)';
+      return;
+    }
+    statusEl.textContent = '';
+    listEl.innerHTML = mylists.map(ml => `
+      <div class="listItem" onclick="loadItems('${ml.id}', '${escapeHtml(ml.name)}')">
+        ${escapeHtml(ml.name)} (${ml.itemsCount}件)
+      </div>
+    `).join('');
+  } catch (e) {
+    statusEl.textContent = 'マイリストの取得に失敗しました';
+  }
+}
+
+async function loadItems(id, name) {
+  const statusEl = document.getElementById('status');
+  const listEl = document.getElementById('list');
+  const gridEl = document.getElementById('grid');
+  document.getElementById('pageTitle').textContent = name;
+  listEl.innerHTML = '';
+  statusEl.textContent = '読み込み中…';
+  try {
+    const res = await fetch('/api/mylist/' + encodeURIComponent(id), { credentials: 'same-origin' });
+    const items = await res.json();
+    statusEl.textContent = '';
+    gridEl.innerHTML = items.map(item => `
+      <div class="card">
+        <img class="thumb" src="${item.thumbnailUrl}" alt="" loading="lazy">
+        <div class="title">${escapeHtml(item.title)}</div>
+        <button class="playBtn" onclick="playOnTv('${item.videoId}')">TVで再生</button>
+      </div>
+    `).join('');
+  } catch (e) {
+    statusEl.textContent = 'マイリストの取得に失敗しました';
+  }
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function playOnTv(videoId) {
+  await fetch('/api/playback/play', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({ videoId })
+  });
+  location.href = '/home.html';
+}
+
+loadMylists();
+</script>
+<script src="/nav-watcher.js"></script>
+</body>
+</html>
