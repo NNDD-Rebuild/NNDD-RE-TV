@@ -30,11 +30,20 @@ NNDD-RE(ニコニコ動画ダウンローダー、PC版はElectron製)のAndroid
 
 ## インストール方法
 
-```bash
-# 実機/エミュレータへインストール
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+ビルド済みAPKは [Releases](https://github.com/NNDD-Rebuild/NNDD-RE-TV/releases) から `app-debug.apk` をダウンロードできる(タグを作ってGitHub Releaseを公開すると、`.github/workflows/release.yml` が自動でビルドしてこのAPKを添付する)。自分でビルドする場合は `app/build/outputs/apk/debug/app-debug.apk` が生成される。
 
-# 起動
+デバッグ署名のAPKなのでGoogle Playは使わず `adb` でサイドロードする。
+
+1. Android TV側で開発者オプションを有効化: 設定 → デバイス情報 → ビルド番号を7回タップ
+2. 設定 → 開発者オプション → 「USBデバッグ」(またはネットワーク経由のデバッグ)をON
+3. PCとTVを接続する
+   - USB接続の場合はそのまま `adb devices` で認識される
+   - 同一Wi-Fi経由の場合、TVのIPアドレスを確認して `adb connect <TVのIP>:5555`
+4. インストール・起動:
+
+```bash
+adb install -r app-debug.apk
+
 adb shell am start -n com.nnddrebuild.nndd_re_tv/.MainActivity
 # インストール直後はGoogle TVのセットアップ画面が前面に来ることがあるため、
 # startコマンドを再度実行しないとアプリが表示されない場合がある
